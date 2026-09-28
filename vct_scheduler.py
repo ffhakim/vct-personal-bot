@@ -17,6 +17,14 @@ def get_region(event_name):
             
     return None
 
+CITY_TIMEZONES = {
+    "Shanghai": "Asia/Shanghai",
+    "Los Angeles": "America/Los_Angeles",
+    "Berlin": "Europe/Berlin",
+    "Seoul": "Asia/Seoul",
+    "Tokyo": "Asia/Tokyo",
+}
+
 r = requests.get(URL, timeout=20)
 r.raise_for_status()
 soup = BeautifulSoup(r.content, 'html5lib') # If this line causes an error, run 'pip install html5lib' or install html5lib
@@ -55,6 +63,16 @@ for match in matches:
 
     event_header = match_soup.select_one(".match-header-event")
     event_url = "https://www.vlr.gg" + event_header["href"]
+    
+    event_response = requests.get(event_url, timeout=20)
+    event_response.raise_for_status()
+    event_soup = BeautifulSoup(event_response.content, "html5lib")
+    
+    city = None
+    
+    for label in event_soup.select(".label"):
+        if label.get_text(strip=True) == "Location":
+            city = label.find_next_sibling("div").get_text(strip=True)
 
     stage_element = event_header.select_one(".match-header-event-series")
     stage_name = " ".join(stage_element.get_text().split())
@@ -70,6 +88,14 @@ for match in matches:
     vlr_time = datetime.strptime(raw_time, "%Y-%m-%d %H:%M:%S")
     vlr_time = vlr_time.replace(tzinfo=ZoneInfo("America/New_York"))
     unix_time = int(vlr_time.timestamp())
+    
+    local_zone = CITY_TIMEZONES.get(city)
+    
+    if local_zone is None:
+        print(f"Unknown city: {city} — add it to CITY_TIMEZONES")
+        local_time = None
+    else:
+        local_time = vlr_time.astimezone(ZoneInfo(local_zone))
 
     patch = next(
         (text for text in date_header.stripped_strings if text.startswith("Patch ")),
@@ -78,6 +104,10 @@ for match in matches:
 
     date_time_line = f"{match_date} • {match_time}"
     your_time_line = f"🕒 <t:{unix_time}:F> (<t:{unix_time}:R>)"
+
+    if local_time is not None:
+        local_clock = local_time.strftime("%-I:%M %p")
+        date_time_line += f" ({local_clock} {city})"
 
     if patch is not None:
         date_time_line += f" • *{patch}*"
