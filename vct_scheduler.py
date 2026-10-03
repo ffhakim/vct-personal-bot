@@ -74,29 +74,24 @@ def get_schedule(memory):
             continue
         
         teams = match.select(".match-item-vs-team-name")
-        
         team_one = teams[0].get_text(" ", strip=True)
         team_two = teams[1].get_text(" ", strip=True)
+        teams_line = f"{team_one} vs {team_two}"
         
         match_path = match["href"]
         match_url = "https://www.vlr.gg" + match_path
-        
-        if match_url in memory:
-            continue
-        
+        match_id = match_path.split("/")[1]
         match_response = requests.get(match_url, timeout=20)
         match_response.raise_for_status()
         match_soup = BeautifulSoup(match_response.content, "html5lib")
 
         event_header = match_soup.select_one(".match-header-event")
         event_url = "https://www.vlr.gg" + event_header["href"]
-        
         event_response = requests.get(event_url, timeout=20)
         event_response.raise_for_status()
         event_soup = BeautifulSoup(event_response.content, "html5lib")
         
         city = None
-        
         for label in event_soup.select(".label"):
             if label.get_text(strip=True) == "Location":
                 city = label.find_next_sibling("div").get_text(strip=True)
@@ -107,17 +102,22 @@ def get_schedule(memory):
         date_header = match_soup.select_one(".match-header-date")
         date_element = date_header.select_one('[data-moment-format="dddd, MMMM D"]')
         time_element = date_header.select_one('[data-moment-format="h:mm A z"]')
-
         match_date = date_element.get_text(" ", strip=True)
         match_time = time_element.get_text(" ", strip=True)
         raw_time = time_element["data-utc-ts"]
-        
         vlr_time = datetime.strptime(raw_time, "%Y-%m-%d %H:%M:%S")
         vlr_time = vlr_time.replace(tzinfo=ZoneInfo("America/New_York"))
         unix_time = int(vlr_time.timestamp())
         
-        local_zone = CITY_TIMEZONES.get(city)
+        saved = memory.get(match_id)
+        if saved is None:
+            status = "📅 **New match**"
+        elif saved["time"] != unix_time or saved["teams"] != teams_line:
+            status = "🔄 **Match updated**"
+        else:
+            continue
         
+        local_zone = CITY_TIMEZONES.get(city)
         if local_zone is None:
             print(f"Unknown city: {city} — add it to CITY_TIMEZONES")
             local_time = None
@@ -131,33 +131,29 @@ def get_schedule(memory):
 
         date_time_line = f"{match_date} • {match_time}"
         your_time_line = f"🕒 <t:{unix_time}:F> (<t:{unix_time}:R>)"
-
         if local_time is not None:
             local_clock = local_time.strftime("%-I:%M %p")
             date_time_line += f" ({local_clock} {city})"
-
+            
         if patch is not None:
             date_time_line += f" • *{patch}*"
 
         embed = discord.Embed(
-            title=f"{team_one} vs {team_two}",
+            title=teams_line,
             url=match_url,
-            description="\n".join([stage_name, date_time_line, your_time_line]),
+            description="\n".join([status, stage_name, date_time_line, your_time_line]),
             color=REGION_COLORS[region],
         )
-        
         embed.set_author(name=event_name, url=event_url)
         
         messages_by_region[region].append(embed)
-        memory[match_url] = {
+        memory[match_id] = {
             "time": unix_time,
-            "teams": f"{team_one} vs {team_two}",
+            "teams": teams_line,
         }
         found_count += 1
-
         if found_count == 4:
             break
-        
     if found_count == 0:
         print("No VCT matches found.")
         
