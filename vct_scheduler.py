@@ -62,7 +62,6 @@ def get_schedule(memory):
         "pacific": [],
         "china": [],
     }
-    found_count = 0
 
     for match in matches:
         event_element = match.select_one(".match-item-event")
@@ -151,10 +150,5 @@ def get_schedule(memory):
             "time": unix_time,
             "teams": teams_line,
         }
-        found_count += 1
-        if found_count == 4:
-            break
-    if found_count == 0:
-        print("No VCT matches found.")
         
     return messages_by_region
