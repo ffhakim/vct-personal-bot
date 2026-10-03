@@ -1,3 +1,4 @@
 config.py
 __pycache__/
 *.bak
+posted_matches.json

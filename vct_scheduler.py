@@ -1,3 +1,6 @@
+import discord
+import json
+import os
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -24,7 +27,28 @@ CITY_TIMEZONES = {
     "Tokyo": "Asia/Tokyo",
 }
 
-def get_schedule():
+REGION_COLORS = {
+    "global": 0xFF4655,
+    "americas": 0xE05818,
+    "emea": 0xD0F818,
+    "pacific": 0x00D0D0,
+    "china": 0xF82058,
+}
+
+MEMORY_FILE = "posted_matches.json"
+
+def load_memory():
+    if not os.path.exists(MEMORY_FILE):
+        return {}
+
+    with open(MEMORY_FILE, "r") as file:
+        return json.load(file)
+    
+def save_memory(memory):
+    with open(MEMORY_FILE, "w") as file:
+        json.dump(memory, file, indent=4)
+
+def get_schedule(memory):
     r = requests.get(URL, timeout=20)
     r.raise_for_status()
     soup = BeautifulSoup(r.content, 'html5lib') # If this line causes an error, run 'pip install html5lib' or install html5lib
@@ -56,6 +80,9 @@ def get_schedule():
         
         match_path = match["href"]
         match_url = "https://www.vlr.gg" + match_path
+        
+        if match_url in memory:
+            continue
         
         match_response = requests.get(match_url, timeout=20)
         match_response.raise_for_status()
@@ -112,17 +139,20 @@ def get_schedule():
         if patch is not None:
             date_time_line += f" • *{patch}*"
 
-        message = "\n".join([
-            f"[**{event_name}**]({event_url})",
-            stage_name,
-            "",
-            f"**{team_one} vs {team_two}**",
-            date_time_line,
-            your_time_line,
-            f"[Match details]({match_url})",
-        ])
+        embed = discord.Embed(
+            title=f"{team_one} vs {team_two}",
+            url=match_url,
+            description="\n".join([stage_name, date_time_line, your_time_line]),
+            color=REGION_COLORS[region],
+        )
         
-        messages_by_region[region].append(message)
+        embed.set_author(name=event_name, url=event_url)
+        
+        messages_by_region[region].append(embed)
+        memory[match_url] = {
+            "time": unix_time,
+            "teams": f"{team_one} vs {team_two}",
+        }
         found_count += 1
 
         if found_count == 4:
